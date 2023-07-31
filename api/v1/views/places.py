@@ -1,79 +1,88 @@
 #!/usr/bin/python3
 """
-Cities file
+View for Places that handles all RESTful API actions
 """
-from flask import jsonify, request, abort, make_response
-from api.v1.views import app_views
+
+from flask import jsonify, request, abort
 from models import storage
-from models.state import State
-from models.city import City
 from models.place import Place
+from api.v1.views import app_views
 
 
 @app_views.route('/cities/<city_id>/places', methods=['GET'],
                  strict_slashes=False)
-def jsonify_places_1(city_id):
-    """ Function that returns a JSON """
-    the_obj = storage.get(City, city_id)
-    if the_obj is None:
+def places_all(city_id):
+    """ returns list of all Place objects linked to a given City """
+    city = storage.get("City", city_id)
+    if city is None:
         abort(404)
-    my_list = []
-    for obj in the_obj.places:
-        my_list.append(obj.to_dict())
-    return jsonify(my_list)
+    places_all = []
+    places = storage.all("Place").values()
+    for place in places:
+        if place.city_id == city_id:
+            places_all.append(place.to_json())
+    return jsonify(places_all)
 
 
-@app_views.route('/places/<place_id>', methods=['GET'], strict_slashes=False)
-def jsonify_places_2(place_id):
-    the_obj = storage.get(Place, place_id)
-    if the_obj is None:
+@app_views.route('/places/<place_id>', methods=['GET'])
+def place_get(place_id):
+    """ handles GET method """
+    place = storage.get("Place", place_id)
+    if place is None:
         abort(404)
-    return jsonify(the_obj.to_dict())
+    place = place.to_json()
+    return jsonify(place)
 
 
-@app_views.route('/places/<place_id>', methods=['DELETE'],
-                 strict_slashes=False)
-def jsonify_places_3(place_id):
-    the_obj = storage.get(Place, place_id)
-    if the_obj is None:
+@app_views.route('/places/<place_id>', methods=['DELETE'])
+def place_delete(place_id):
+    """ handles DELETE method """
+    empty_dict = {}
+    place = storage.get("Place", place_id)
+    if place is None:
         abort(404)
-    storage.delete(the_obj)
+    storage.delete(place)
     storage.save()
-    return jsonify({}), 200
+    return jsonify(empty_dict), 200
 
 
 @app_views.route('/cities/<city_id>/places', methods=['POST'],
                  strict_slashes=False)
-def jsonify_places_4(city_id):
-    try:
-        json_post = request.get_json()
-        the_obj = storage.get(City, city_id)
-        if the_obj is None:
-            abort(404)
-        if not json_post:
-            return make_response(jsonify({'error': 'Not a JSON'}), 400)
-        if 'user_id' not in json_post:
-            return make_response(jsonify({'error': 'Missing user_id'}), 400)
-        if 'name' not in json_post:
-            return make_response(jsonify({'error': 'Missing name'}), 400)
-        json_post['city_id'] = city_id
-        new = Place(**json_post)
-        new.save()
-        return make_response(jsonify(new.to_dict()), 201)
-    except:
+def place_post(city_id):
+    """ handles POST method """
+    city = storage.get("City", city_id)
+    if city is None:
         abort(404)
+    data = request.get_json()
+    if data is None:
+        abort(400, "Not a JSON")
+    if 'user_id' not in data.keys():
+        abort(400, "Missing user_id")
+    user = storage.get("User", data['user_id'])
+    if user is None:
+        abort(404)
+    if 'name' not in data.keys():
+        abort(400, "Missing name")
+    place = Place(**data)
+    place.city_id = city_id
+    place.save()
+    place = place.to_json()
+    return jsonify(place), 201
 
 
-@app_views.route('/places/<place_id>', methods=['PUT'], strict_slashes=False)
-def jsonify_places_5(place_id):
-    the_obj = storage.get(Place, place_id)
-    json_put = request.get_json()
-    if the_obj is None:
+@app_views.route('/places/<place_id>', methods=['PUT'])
+def place_put(place_id):
+    """ handles PUT method """
+    place = storage.get("Place", place_id)
+    if place is None:
         abort(404)
-    if not json_put:
-        return make_response(jsonify({'error': 'Not a JSON'}), 400)
-    for key, value in json_put.items():
-        if key not in ['id', 'created_at', 'city_id', 'update_at', 'user_id']:
-            setattr(the_obj, key, value)
-    storage.save()
-    return make_response(jsonify(the_obj.to_dict()), 200)
+    data = request.get_json()
+    if data is None:
+        abort(400, "Not a JSON")
+    for key, value in data.items():
+        ignore_keys = ["id", "user_id", "city_id", "created_at", "updated_at"]
+        if key not in ignore_keys:
+            place.bm_update(key, value)
+    place.save()
+    place = place.to_json()
+    return jsonify(place), 200
